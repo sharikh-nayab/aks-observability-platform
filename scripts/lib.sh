@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2034  # TF_DIR/K8S_DIR are used by the scripts that source this
 # shared bits for the scripts in this dir. source it, don't run it.
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
