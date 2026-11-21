@@ -37,6 +37,9 @@ jobs:
           tflint_version: v0.53.0
 
       - name: tflint
+        env:
+          # plugin download hits the GitHub API; unauthenticated runners get rate-limited
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           tflint --init
           tflint --recursive --format compact
