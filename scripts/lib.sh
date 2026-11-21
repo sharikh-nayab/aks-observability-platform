@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shared bits for the scripts in this dir. source it, don't run it.
 
+# shellcheck disable=SC2034  # TF_DIR/K8S_DIR are used by the scripts that source this
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TF_DIR="${ROOT_DIR}/terraform"
 K8S_DIR="${ROOT_DIR}/k8s"
