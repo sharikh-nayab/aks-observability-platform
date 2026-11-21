@@ -1,0 +1,22 @@
+# terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+terraform.tfvars
+*.auto.tfvars
+crash.log
+
+# local kube/helm bits
+kubeconfig*
+*.rendered.yaml
+
+# secrets
+.env
+*.token
+
+# editors
+.vscode/
+.idea/
+*.swp
