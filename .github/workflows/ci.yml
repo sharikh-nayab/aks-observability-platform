@@ -1,0 +1,119 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  terraform:
+    name: terraform fmt / validate / tflint
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.9.8"
+          terraform_wrapper: false
+
+      - name: fmt
+        run: terraform fmt -recursive -check -diff
+
+      - name: init (no backend)
+        run: terraform init -backend=false -input=false
+
+      - name: validate
+        run: terraform validate -no-color
+
+      - uses: terraform-linters/setup-tflint@v4
+        with:
+          tflint_version: v0.53.0
+
+      - name: tflint
+        run: |
+          tflint --init
+          tflint --recursive --format compact
+
+  manifests:
+    name: kubeconform + promtool
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/download/v0.6.7/kubeconform-linux-amd64.tar.gz \
+            | sudo tar xz -C /usr/local/bin kubeconform
+
+      - name: kubeconform
+        run: |
+          kubeconform -strict -summary \
+            -kubernetes-version 1.31.0 \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            k8s/podinfo k8s/monitoring/rules k8s/monitoring/dashboards
+
+      # the dynakube has an envsubst placeholder and the v1beta6 schema isn't
+      # in the catalog yet, so just check it parses and has the fields we rely on
+      - name: dynakube sanity
+        run: |
+          python3 - <<'EOF'
+          import yaml
+          d = yaml.safe_load(open("k8s/dynatrace/dynakube.yaml"))
+          assert d["apiVersion"] == "dynatrace.com/v1beta6", d["apiVersion"]
+          assert d["kind"] == "DynaKube"
+          assert "cloudNativeFullStack" in d["spec"]["oneAgent"]
+          assert "routing" in d["spec"]["activeGate"]["capabilities"]
+          print("dynakube ok")
+          EOF
+
+      - name: install promtool
+        run: |
+          v=2.55.1
+          curl -sSL "https://github.com/prometheus/prometheus/releases/download/v${v}/prometheus-${v}.linux-amd64.tar.gz" \
+            | tar xz --strip-components=1 -C /tmp "prometheus-${v}.linux-amd64/promtool"
+          sudo mv /tmp/promtool /usr/local/bin/
+
+      - name: promtool check rules
+        run: scripts/ci/check-rules.sh
+
+  shell:
+    name: shellcheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ludeeus/action-shellcheck@2.0.0
+        with:
+          scandir: ./scripts
+          severity: warning
+
+  helm:
+    name: helm template (values sanity)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: kube-prometheus-stack renders with our values
+        run: |
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm template kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+            --version 65.5.1 -n monitoring \
+            -f k8s/monitoring/kube-prometheus-stack.values.yaml > /tmp/kps.yaml
+          grep -c '^kind:' /tmp/kps.yaml
+
+      - name: dynatrace-operator renders with our values
+        run: |
+          helm template dynatrace-operator oci://public.ecr.aws/dynatrace/dynatrace-operator \
+            --version 1.11.0 -n dynatrace \
+            -f k8s/dynatrace/operator.values.yaml > /tmp/dto.yaml
+          grep -c '^kind:' /tmp/dto.yaml
