@@ -1,0 +1,25 @@
+# copy to terraform.tfvars and edit. terraform.tfvars is gitignored.
+
+project     = "obsplat"
+environment = "dev"
+location    = "centralindia"
+
+# lab sizing. bump for anything real.
+sku_tier           = "Free"
+system_node_size   = "Standard_D2s_v5"
+system_node_count  = 2
+user_node_size     = "Standard_D4s_v5"
+user_node_min      = 1
+user_node_max      = 3
+availability_zones = ["1", "2", "3"]
+
+# pin once you know what you're running
+# kubernetes_version = "1.31.5"
+
+# Entra group that gets cluster-admin. Leave empty for a lab and you get local accounts.
+admin_group_object_ids = []
+
+# your office / vpn egress. empty = api server open to the internet.
+authorized_ip_ranges = []
+
+log_retention_days = 30
