@@ -1,0 +1,67 @@
+# DynaKube: tells the operator how to monitor this cluster.
+# ${DT_API_URL} is substituted by scripts/install-dynatrace.sh (envsubst).
+# Tokens come from the `dynakube` secret in the same namespace (apiToken,
+# dataIngestToken) which the script creates. Never put them in this file.
+apiVersion: dynatrace.com/v1beta6
+kind: DynaKube
+metadata:
+  name: dynakube
+  namespace: dynatrace
+  annotations:
+    # avoid the operator failing the DynaKube if the ActiveGate takes a while
+    # to come up on small lab nodes
+    feature.dynatrace.com/automatic-kubernetes-api-monitoring: "true"
+spec:
+  apiUrl: ${DT_API_URL}
+
+  # the secret name defaults to the DynaKube name; being explicit anyway
+  tokens: dynakube
+
+  # keep host/cluster/pod metadata attached to every span and log
+  metadataEnrichment:
+    enabled: true
+
+  # cloudNativeFullStack = host-level OneAgent (daemonset) + code modules
+  # injected into pods via the webhook. Classic full stack injects by
+  # mutating the host, which is messier to roll back and breaks on
+  # read-only root fs nodes. Application-only skips host metrics, which
+  # loses the node-level view I want for capacity planning.
+  oneAgent:
+    cloudNativeFullStack:
+      tolerations:
+        - effect: NoSchedule
+          key: CriticalAddonsOnly
+          operator: Exists
+      oneAgentResources:
+        requests:
+          cpu: 100m
+          memory: 512Mi
+        limits:
+          cpu: 300m
+          memory: 1Gi
+      # don't inject into the monitoring stack itself; prometheus + grafana
+      # get noisy and the traces aren't useful
+      namespaceSelector:
+        matchExpressions:
+          - key: kubernetes.io/metadata.name
+            operator: NotIn
+            values: ["monitoring", "dynatrace", "kube-system"]
+
+  # routing: OneAgents send through the ActiveGate, so only it needs egress
+  # kubernetes-monitoring: pulls the k8s API for the Kubernetes app in DT
+  activeGate:
+    capabilities:
+      - routing
+      - kubernetes-monitoring
+    replicas: 1
+    resources:
+      requests:
+        cpu: 300m
+        memory: 1Gi
+      limits:
+        cpu: 1000m
+        memory: 1.5Gi
+    tolerations:
+      - effect: NoSchedule
+        key: CriticalAddonsOnly
+        operator: Exists

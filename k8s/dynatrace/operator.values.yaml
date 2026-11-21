@@ -1,0 +1,30 @@
+# values for oci://public.ecr.aws/dynatrace/dynatrace-operator
+# helm upgrade --install dynatrace-operator oci://public.ecr.aws/dynatrace/dynatrace-operator \
+#   -n dynatrace --create-namespace -f k8s/dynatrace/operator.values.yaml --atomic
+
+installCRD: true
+
+# CSI driver mounts the OneAgent code modules into app pods from a shared
+# per-node volume instead of downloading per pod. Cuts pod start time and
+# registry traffic noticeably on busy nodes. Operator 1.11+ can use image
+# volumes instead (k8s 1.35+); on AKS versions I run that isn't available yet.
+csidriver:
+  enabled: true
+
+operator:
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 100m
+      memory: 128Mi
+
+webhook:
+  resources:
+    requests:
+      cpu: 300m
+      memory: 128Mi
+    limits:
+      cpu: 300m
+      memory: 128Mi
