@@ -1,0 +1,148 @@
+# values for prometheus-community/kube-prometheus-stack
+# helm upgrade --install kube-prometheus-stack prometheus-community/kube-prometheus-stack \
+#   -n monitoring --create-namespace -f k8s/monitoring/kube-prometheus-stack.values.yaml
+
+fullnameOverride: kps
+
+# These components live on the AKS control plane and aren't scrapeable from
+# inside the cluster. Leaving them on just produces permanent "down" targets.
+kubeControllerManager:
+  enabled: false
+kubeScheduler:
+  enabled: false
+kubeEtcd:
+  enabled: false
+kubeProxy:
+  enabled: false
+
+defaultRules:
+  create: true
+  rules:
+    # replaced by our own rules; the stock ones fire on the disabled targets above
+    kubeControllerManager: false
+    kubeSchedulerAlerting: false
+    kubeSchedulerRecording: false
+    etcd: false
+    kubeProxy: false
+
+prometheus:
+  prometheusSpec:
+    retention: 15d
+    retentionSize: 45GB
+    # pick up every ServiceMonitor/PodMonitor/PrometheusRule in the cluster,
+    # not just the ones carrying the helm release label
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    resources:
+      requests:
+        cpu: 500m
+        memory: 2Gi
+      limits:
+        memory: 4Gi
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-csi
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 50Gi
+    externalLabels:
+      cluster: obsplat-dev
+    # tolerate the system pool taint so prometheus doesn't compete with apps
+    tolerations:
+      - key: CriticalAddonsOnly
+        operator: Exists
+    nodeSelector:
+      kubernetes.azure.com/mode: system
+
+alertmanager:
+  alertmanagerSpec:
+    retention: 120h
+    storage:
+      volumeClaimTemplate:
+        spec:
+          storageClassName: managed-csi
+          accessModes: ["ReadWriteOnce"]
+          resources:
+            requests:
+              storage: 5Gi
+  config:
+    global:
+      resolve_timeout: 5m
+    route:
+      receiver: "null"
+      group_by: ["alertname", "namespace"]
+      group_wait: 30s
+      group_interval: 5m
+      repeat_interval: 4h
+      routes:
+        - receiver: "null"
+          matchers:
+            - alertname = "Watchdog"
+        - receiver: platform-pager
+          matchers:
+            - severity = "critical"
+          continue: true
+        - receiver: platform-ticket
+          matchers:
+            - severity = "warning"
+    receivers:
+      - name: "null"
+      # swap the URLs for the real pagerduty/teams webhooks via a secret;
+      # keeping placeholders here so the routing tree is reviewable in git
+      - name: platform-pager
+        webhook_configs:
+          - url: http://alert-relay.monitoring.svc:8080/pager
+            send_resolved: true
+      - name: platform-ticket
+        webhook_configs:
+          - url: http://alert-relay.monitoring.svc:8080/ticket
+            send_resolved: true
+
+grafana:
+  enabled: true
+  defaultDashboardsTimezone: Asia/Kolkata
+  admin:
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  persistence:
+    enabled: true
+    storageClassName: managed-csi
+    size: 5Gi
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      labelValue: "1"
+      searchNamespace: ALL
+      folderAnnotation: grafana_folder
+      provider:
+        foldersFromFilesStructure: true
+  grafana.ini:
+    server:
+      root_url: "%(protocol)s://%(domain)s/grafana/"
+      serve_from_sub_path: true
+    analytics:
+      check_for_updates: false
+    users:
+      viewers_can_edit: false
+
+kube-state-metrics:
+  metricLabelsAllowlist:
+    - pods=[app.kubernetes.io/name,app.kubernetes.io/part-of]
+    - deployments=[app.kubernetes.io/name]
+
+nodeExporter:
+  enabled: true
+
+prometheusOperator:
+  admissionWebhooks:
+    enabled: true
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
