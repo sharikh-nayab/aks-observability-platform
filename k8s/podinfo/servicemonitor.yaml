@@ -1,0 +1,21 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: podinfo
+  namespace: podinfo
+  labels:
+    app.kubernetes.io/name: podinfo
+    # kube-prometheus-stack is configured to pick up any ServiceMonitor,
+    # but keeping the release label means it also works with the default selector
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: podinfo
+  namespaceSelector:
+    matchNames:
+      - podinfo
+  endpoints:
+    - port: http-metrics
+      interval: 15s
+      scrapeTimeout: 10s
